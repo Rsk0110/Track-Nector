@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: ledger-co
+    runtime: python
+    plan: starter
+    buildCommand: python -m py_compile bank_account.py
+    startCommand: python bank_account.py
+    healthCheckPath: /api/accounts
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: LEDGER_DATA_FILE
+        value: /var/data/accounts.json
+    disk:
+      name: ledger-data
+      mountPath: /var/data
+      sizeGB: 1

@@ -8,6 +8,7 @@ import hashlib
 import json
 import secrets
 import base64
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -178,7 +179,9 @@ def account_data(account, unlocked=False):
 
 accounts = []
 unlocked_accounts = {}
-DATA_FILE = Path(__file__).with_name("accounts.json")
+DATA_FILE = Path(os.environ.get(
+    "LEDGER_DATA_FILE", Path(__file__).with_name("accounts.json")
+))
 
 
 def save_accounts():
@@ -227,7 +230,7 @@ class BankingRequestHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.end_headers()
 
@@ -332,8 +335,10 @@ class BankingRequestHandler(BaseHTTPRequestHandler):
 # ------------------------------------------------------------------
 if __name__ == "__main__":
     load_accounts()
-    server = ThreadingHTTPServer(("127.0.0.1", 8000), BankingRequestHandler)
-    print("Ledger & Co. is running at http://127.0.0.1:8000")
+    host = os.environ.get("HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", "8000"))
+    server = ThreadingHTTPServer((host, port), BankingRequestHandler)
+    print(f"Ledger & Co. is running at http://{host}:{port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
