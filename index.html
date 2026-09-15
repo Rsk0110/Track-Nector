@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ledger &amp; Co. — Passbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:      #dfe7d3;
+    --paper-dark: #d2dcc4;
+    --rule:       #aec49c;
+    --ink:        #1c2b3a;
+    --ink-soft:   #445569;
+    --credit:     #2f5233;
+    --debit:      #7a2e2e;
+    --seal:       #b8892f;
+    --seal-dark:  #8f691f;
+    --paper-edge: #c7d2b6;
+    --error-bg:   #f4e2df;
+  }
+
+  * { box-sizing: border-box; }
+
+  body{
+    margin: 0;
+    min-height: 100vh;
+    background: linear-gradient(180deg, #eef1e6, #dfe4d3);
+    font-family: 'Spectral', serif;
+    color: var(--ink);
+    display: flex;
+    justify-content: center;
+    padding: 40px 16px 60px;
+  }
+
+  .desk{
+    width: 100%;
+    max-width: 880px;
+  }
+
+  .masthead{
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 18px;
+    padding: 0 6px;
+  }
+  .masthead h1{
+    font-size: 1.55rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    margin: 0;
+  }
+  .masthead h1 span{
+    font-style: italic;
+    font-weight: 400;
+    color: var(--ink-soft);
+  }
+  .masthead .tagline{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--ink-soft);
+    letter-spacing: 0.02em;
+  }
+
+  .passbook{
+    position: relative;
+    background: var(--paper);
+    border: 1px solid var(--paper-edge);
+    border-radius: 3px;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.5) inset,
+      0 18px 40px -20px rgba(20, 30, 20, 0.45),
+      0 2px 6px rgba(20,30,20,0.15);
+    overflow: hidden;
+  }
+
+  .passbook::before{
+    /* stitched spine */
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 34px;
+    background:
+      repeating-linear-gradient(
+        180deg,
+        transparent 0 10px,
+        rgba(28,43,58,0.18) 10px 11px
+      ),
+      var(--paper-dark);
+    border-right: 1px dashed rgba(28,43,58,0.35);
+  }
+
+  .passbook-inner{
+    margin-left: 34px;
+    padding: 30px 34px 34px;
+  }
+
+  .top-row{
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 20px;
+    align-items: start;
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 18px;
+    margin-bottom: 22px;
+  }
+
+  .field-label{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.66rem;
+    letter-spacing: 0.06em;
+    color: var(--ink-soft);
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  .holder-row{
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+  }
+
+  input[type="text"], input[type="number"], input[type="password"]{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.95rem;
+    background: transparent;
+    border: none;
+    border-bottom: 1.5px solid var(--rule);
+    padding: 4px 2px 6px;
+    color: var(--ink);
+    outline: none;
+    min-width: 160px;
+  }
+  input:focus{ border-bottom-color: var(--ink); }
+  input::placeholder{ color: #8a9a80; }
+
+  .locked-amount{
+    letter-spacing: 0.12em;
+    color: var(--ink-soft);
+  }
+
+  .btn{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    border: 1.5px solid var(--ink);
+    background: transparent;
+    color: var(--ink);
+    padding: 9px 16px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, transform 0.05s ease;
+  }
+  .btn:hover{ background: var(--ink); color: var(--paper); }
+  .btn:active{ transform: translateY(1px); }
+  .btn:focus-visible{ outline: 2px solid var(--seal-dark); outline-offset: 2px; }
+  .btn:disabled{ opacity: 0.4; cursor: not-allowed; }
+  .btn:disabled:hover{ background: transparent; color: var(--ink); }
+
+  .btn.primary{ background: var(--ink); color: var(--paper); }
+  .btn.primary:hover{ background: #0e1822; }
+
+  .seal{
+    width: 92px;
+    height: 92px;
+    border-radius: 50%;
+    border: 2.5px solid var(--seal);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--seal-dark);
+    text-align: center;
+    transform: rotate(-6deg);
+    flex-shrink: 0;
+    position: relative;
+  }
+  .seal::before{
+    content: "";
+    position: absolute;
+    inset: 5px;
+    border: 1px solid var(--seal);
+    border-radius: 50%;
+  }
+  .seal .num{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 1.6rem;
+    font-weight: 600;
+    line-height: 1;
+  }
+  .seal .cap{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.5rem;
+    letter-spacing: 0.08em;
+    margin-top: 2px;
+  }
+
+  .accounts-empty{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+    padding: 10px 2px 26px;
+    border-bottom: 1px dashed var(--rule);
+    margin-bottom: 22px;
+  }
+
+  .account-card{
+    border-bottom: 1px dashed var(--rule);
+    padding: 0 2px 26px;
+    margin-bottom: 26px;
+  }
+  .account-card:last-child{ margin-bottom: 0; border-bottom: none; }
+
+  .account-head{
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .account-head .name{
+    font-size: 1.1rem;
+    font-weight: 600;
+  }
+  .account-head .acctno{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--ink-soft);
+  }
+  .balance-line{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 1.7rem;
+    font-weight: 600;
+    margin: 6px 0 16px;
+  }
+  .balance-line .cur{ font-size: 1.1rem; vertical-align: 2px; margin-right: 2px; }
+  .min-note{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.68rem;
+    color: var(--ink-soft);
+    margin-left: 8px;
+  }
+
+  .spending-summary{
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin: 0 0 16px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.78rem;
+  }
+  .spending-summary strong{ color: var(--debit); }
+  .spending-summary .breakdown{ color: var(--ink-soft); }
+
+  .action-row{
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+
+  .msg{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.78rem;
+    padding: 8px 10px;
+    border-left: 3px solid var(--credit);
+    background: rgba(47,82,51,0.08);
+    color: var(--credit);
+    margin: 10px 0 4px;
+    display: none;
+  }
+  .msg.show{ display: block; }
+  .msg.error{
+    border-left-color: var(--debit);
+    background: var(--error-bg);
+    color: var(--debit);
+  }
+
+  details.ledger{
+    margin-top: 12px;
+  }
+  details.ledger summary{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--ink-soft);
+    cursor: pointer;
+    letter-spacing: 0.03em;
+    user-select: none;
+  }
+  details.ledger summary:hover{ color: var(--ink); }
+
+  table.txns{
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.74rem;
+  }
+  table.txns th{
+    text-align: left;
+    font-weight: 500;
+    color: var(--ink-soft);
+    border-bottom: 1px solid var(--rule);
+    padding: 4px 6px;
+  }
+  table.txns td{
+    padding: 5px 6px;
+    border-bottom: 1px dotted var(--rule);
+  }
+  table.txns tr:last-child td{ border-bottom: none; }
+  td.amt-credit{ color: var(--credit); }
+  td.amt-debit{ color: var(--debit); }
+  td.right{ text-align: right; }
+
+  .foot-note{
+    text-align: center;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.68rem;
+    color: var(--ink-soft);
+    margin-top: 18px;
+    letter-spacing: 0.03em;
+  }
+
+  @media (max-width: 540px){
+    .passbook-inner{ padding: 24px 18px 28px; }
+    .top-row{ grid-template-columns: 1fr; }
+    .seal{ transform: none; align-self: flex-start; }
+    .balance-line{ font-size: 1.4rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="desk">
+  <div class="masthead">
+    <h1>Ledger &amp; Co. <span>passbook</span></h1>
+    <div class="tagline">EST. TODAY · A DEMONSTRATION LEDGER</div>
+  </div>
+
+  <div class="passbook">
+    <div class="passbook-inner">
+
+      <div class="top-row">
+        <div class="holder-row">
+          <div>
+            <span class="field-label">ACCOUNT HOLDER</span>
+            <input type="text" id="holderName" placeholder="Full name" />
+          </div>
+          <div>
+            <span class="field-label">OPENING DEPOSIT (CA$, min 1)</span>
+            <input type="number" id="openingDeposit" placeholder="1" min="1" />
+          </div>
+          <div>
+            <span class="field-label">PASSWORD</span>
+            <input type="password" id="accountPassword" placeholder="Min 4 characters" minlength="4" />
+          </div>
+          <button class="btn primary" id="openBtn">Open Account</button>
+        </div>
+
+        <div class="seal">
+          <div class="num" id="totalCount">0</div>
+          <div class="cap">ACCOUNTS<br>OPENED</div>
+        </div>
+      </div>
+
+      <div id="openMsg" class="msg error"></div>
+
+      <div id="accountsArea">
+        <div class="accounts-empty" id="emptyNote">
+          No accounts opened yet — fill in a name and opening deposit above.
+        </div>
+      </div>
+
+      <div class="foot-note">Minimum balance CA$1 is enforced on every withdrawal.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------------------------------------------------------
+   UI wiring
+--------------------------------------------------------- */
+const accounts = [];
+const API = '/api';
+const MIN_BALANCE = 1;
+const accountsArea = document.getElementById('accountsArea');
+const emptyNote = document.getElementById('emptyNote');
+const totalCountEl = document.getElementById('totalCount');
+const openMsg = document.getElementById('openMsg');
+
+function fmt(n) {
+  return Number(n).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function refreshCount() {
+  totalCountEl.textContent = accounts.length;
+}
+
+async function apiRequest(path, options = {}) {
+  const response = await fetch(`${API}${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Request failed.');
+  return data;
+}
+
+function flashOpenError(text) {
+  openMsg.textContent = text;
+  openMsg.classList.add('show', 'error');
+  setTimeout(() => openMsg.classList.remove('show'), 3200);
+}
+
+document.getElementById('openBtn').addEventListener('click', async () => {
+  const nameInput = document.getElementById('holderName');
+  const depositInput = document.getElementById('openingDeposit');
+  const passwordInput = document.getElementById('accountPassword');
+  const name = nameInput.value.trim();
+  const deposit = parseFloat(depositInput.value);
+  const password = passwordInput.value;
+
+  if (!name) {
+    flashOpenError('Enter an account holder name.');
+    return;
+  }
+  if (isNaN(deposit)) {
+    flashOpenError('Enter a valid opening deposit.');
+    return;
+  }
+  if (password.length < 4) {
+    flashOpenError('Password must be at least 4 characters.');
+    return;
+  }
+
+  try {
+    const result = await apiRequest('/accounts', {
+      method: 'POST',
+      body: JSON.stringify({ holderName: name, initialDeposit: deposit, password }),
+    });
+    accounts.push(result.account);
+    nameInput.value = '';
+    depositInput.value = '';
+    passwordInput.value = '';
+    refreshCount();
+    renderAccounts();
+  } catch (e) {
+    flashOpenError(e.message);
+  }
+});
+
+async function loadAccounts() {
+  try {
+    const result = await apiRequest('/accounts');
+    accounts.push(...result.accounts);
+    totalCountEl.textContent = result.totalAccounts;
+    renderAccounts();
+  } catch (e) {
+    flashOpenError(`Cannot connect to Python: ${e.message}`);
+  }
+}
+
+function renderAccounts() {
+  emptyNote.style.display = accounts.length ? 'none' : 'block';
+  accountsArea.querySelectorAll('.account-card').forEach(el => el.remove());
+
+  accounts.forEach((acc, idx) => {
+    const card = document.createElement('div');
+    card.className = 'account-card';
+    card.innerHTML = `
+      <div class="account-head">
+        <span class="name">${escapeHtml(acc.holderName)}</span>
+        <span class="acctno">A/C NO. ${acc.accountNumber}</span>
+      </div>
+
+      <div class="balance-line"><span class="cur">CA$</span>${fmt(acc.balance)}
+        <span class="min-note">min balance CA$${MIN_BALANCE}</span>
+      </div>
+
+      ${acc.locked ? `
+      <div class="action-row">
+        <input type="password" placeholder="Password" class="unlockPassword" />
+        <button class="btn primary unlockBtn">Unlock Amount</button>
+        <button class="btn deleteBtn">Delete Account</button>
+      </div>` : `
+      <div class="spending-summary">
+        <strong>Total spent: CA$${fmt(acc.totalSpent || 0)}</strong>
+        ${Object.entries(acc.spendingByPurpose || {}).length ? `<span class="breakdown">${Object.entries(acc.spendingByPurpose).map(([purpose, amount]) => `${escapeHtml(purpose)} CA$${fmt(amount)}`).join(' · ')}</span>` : ''}
+      </div>
+      <div class="action-row">
+        <input type="number" placeholder="Amount" class="amountInput" min="0.01" step="0.01" />
+        <input type="text" placeholder="Spent on (e.g. groceries)" class="purposeInput" />
+        <button class="btn depositBtn">Deposit</button>
+        <button class="btn withdrawBtn">Withdraw</button>
+        <button class="btn inquiryBtn">Balance Inquiry</button>
+      </div>
+      <div class="msg accMsg"></div>
+
+      <details class="ledger">
+        <summary>View transaction history (${acc.transactions.length})</summary>
+        <table class="txns">
+          <thead>
+            <tr><th>Date &amp; time</th><th>Type</th><th>Spent on</th><th class="right">Amount</th><th class="right">Balance</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </details>
+      <details class="ledger spending-history">
+        <summary>View spending history (${acc.transactions.filter(t => t.type === 'Withdraw').length})</summary>
+        <table class="txns">
+          <thead>
+            <tr><th>Date &amp; time</th><th>Spent on</th><th class="right">Amount</th></tr>
+          </thead>
+          <tbody class="spendingBody"></tbody>
+        </table>
+      </details>
+      <div class="action-row delete-row">
+        <input type="password" placeholder="Password to delete" class="deletePassword" />
+        <button class="btn deleteBtn">Delete Account</button>
+      </div>`}
+    `;
+
+    if (acc.locked) {
+      card.querySelector('.balance-line').innerHTML =
+        '<span class="locked-amount">CA$ • • • • • •</span>';
+      card.querySelector('.unlockBtn').addEventListener('click', async () => {
+        const password = card.querySelector('.unlockPassword').value;
+        try {
+          const result = await apiRequest(`/accounts/${acc.accountNumber}/unlock`, {
+            method: 'POST',
+            body: JSON.stringify({ password }),
+          });
+          Object.assign(acc, result.account, { token: result.token });
+          renderAccounts();
+        } catch (e) {
+          flashOpenError(e.message);
+        }
+      });
+      card.querySelector('.deleteBtn').addEventListener('click', () =>
+        deleteAccount(acc, card.querySelector('.unlockPassword').value)
+      );
+      accountsArea.appendChild(card);
+      return;
+    }
+
+    const amountInput = card.querySelector('.amountInput');
+    const purposeInput = card.querySelector('.purposeInput');
+    const msgEl = card.querySelector('.accMsg');
+    const tbody = card.querySelector('tbody');
+    const summary = card.querySelector('summary');
+    const spendingBody = card.querySelector('.spendingBody');
+    const spendingSummary = card.querySelector('.spending-history summary');
+
+    card.querySelector('.deleteBtn').addEventListener('click', () =>
+      deleteAccount(acc, card.querySelector('.deletePassword').value)
+    );
+
+    function paintLedger() {
+      tbody.innerHTML = '';
+      acc.transactions.slice().reverse().forEach(t => {
+        const tr = document.createElement('tr');
+        const cls = t.type === 'Withdraw' ? 'amt-debit' : 'amt-credit';
+        const sign = t.type === 'Withdraw' ? '−' : '+';
+        tr.innerHTML = `
+          <td>${t.time}</td>
+          <td>${t.type}</td>
+          <td>${escapeHtml(t.purpose || '—')}</td>
+          <td class="right ${cls}">${sign}CA$${fmt(t.amount)}</td>
+          <td class="right">CA$${fmt(t.balance)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+      summary.textContent = `View transaction history (${acc.transactions.length})`;
+    }
+
+    function paintSpendingHistory() {
+      const spending = acc.transactions.filter(t => t.type === 'Withdraw').slice().reverse();
+      spendingBody.innerHTML = '';
+      spending.forEach(t => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${t.time}</td>
+          <td>${escapeHtml(t.purpose || 'Cash withdrawal')}</td>
+          <td class="right amt-debit">CA$${fmt(t.amount)}</td>
+        `;
+        spendingBody.appendChild(tr);
+      });
+      spendingSummary.textContent = `View spending history (${spending.length})`;
+    }
+
+    function showMsg(text, isError) {
+      msgEl.textContent = text;
+      msgEl.classList.toggle('error', !!isError);
+      msgEl.classList.add('show');
+      setTimeout(() => msgEl.classList.remove('show'), 3200);
+    }
+
+    function refreshBalanceLine() {
+      card.querySelector('.balance-line').innerHTML =
+        `<span class="cur">CA$</span>${fmt(acc.balance)}<span class="min-note">min balance CA$${MIN_BALANCE}</span>`;
+    }
+
+    function refreshSpendingSummary() {
+      const summary = card.querySelector('.spending-summary');
+      const breakdown = Object.entries(acc.spendingByPurpose || {})
+        .map(([purpose, amount]) => `${escapeHtml(purpose)} CA$${fmt(amount)}`)
+        .join(' · ');
+      summary.innerHTML = `<strong>Total spent: CA$${fmt(acc.totalSpent || 0)}</strong>`
+        + (breakdown ? `<span class="breakdown">${breakdown}</span>` : '');
+    }
+
+    card.querySelector('.depositBtn').addEventListener('click', async () => {
+      const amt = parseFloat(amountInput.value);
+      if (isNaN(amt)) { showMsg('Enter a valid amount.', true); return; }
+      try {
+        const result = await apiRequest(`/accounts/${acc.accountNumber}/deposit`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${acc.token}` },
+          body: JSON.stringify({ amount: amt }),
+        });
+        Object.assign(acc, result.account);
+        amountInput.value = '';
+        refreshBalanceLine();
+        paintLedger();
+        showMsg(`Deposited CA$${fmt(amt)}. New balance CA$${fmt(acc.balance)}.`, false);
+      } catch (e) {
+        showMsg(e.message, true);
+      }
+    });
+
+    card.querySelector('.withdrawBtn').addEventListener('click', async () => {
+      const amt = parseFloat(amountInput.value);
+      if (isNaN(amt)) { showMsg('Enter a valid amount.', true); return; }
+      try {
+        const result = await apiRequest(`/accounts/${acc.accountNumber}/withdraw`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${acc.token}` },
+          body: JSON.stringify({ amount: amt, purpose: purposeInput.value }),
+        });
+        Object.assign(acc, result.account);
+        amountInput.value = '';
+        purposeInput.value = '';
+        refreshBalanceLine();
+        refreshSpendingSummary();
+        paintLedger();
+        paintSpendingHistory();
+        showMsg(`Withdrew CA$${fmt(amt)}. New balance CA$${fmt(acc.balance)}.`, false);
+      } catch (e) {
+        showMsg(e.message, true);
+      }
+    });
+
+    card.querySelector('.inquiryBtn').addEventListener('click', () => {
+      showMsg(`Current balance: CA$${fmt(acc.balance)}.`, false);
+    });
+
+    paintLedger();
+    paintSpendingHistory();
+    accountsArea.appendChild(card);
+  });
+}
+
+async function deleteAccount(account, password) {
+  if (!password) {
+    flashOpenError('Enter the account password to delete it.');
+    return;
+  }
+  if (!confirm(`Delete account ${account.accountNumber}? This cannot be undone.`)) return;
+  try {
+    const result = await apiRequest(`/accounts/${account.accountNumber}/delete`, {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    });
+    const index = accounts.indexOf(account);
+    if (index !== -1) accounts.splice(index, 1);
+    totalCountEl.textContent = result.totalAccounts;
+    renderAccounts();
+  } catch (e) {
+    flashOpenError(e.message);
+  }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+loadAccounts();
+</script>
+
+</body>
+</html>
