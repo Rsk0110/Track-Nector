@@ -294,6 +294,7 @@ class BankingRequestHandler(BaseHTTPRequestHandler):
                     if not account.verify_password(password):
                         raise PermissionError("Incorrect password.")
                     accounts.remove(account)
+                    Account._total_accounts -= 1
                     for token, unlocked_account in list(unlocked_accounts.items()):
                         if unlocked_account is account:
                             del unlocked_accounts[token]

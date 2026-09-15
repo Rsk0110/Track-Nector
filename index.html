@@ -506,6 +506,7 @@ async function staticApiRequest(path, options = {}) {
     }
     if (action === 'delete') {
       state.accounts = state.accounts.filter(item => item !== account);
+      state.totalAccounts -= 1;
       writeStaticState(state);
       return { accountNumber: account.accountNumber, totalAccounts: state.totalAccounts };
     }
