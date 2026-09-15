@@ -1,0 +1,43 @@
+{
+  "total_accounts": 2,
+  "next_account_number": 1003,
+  "accounts": [
+    {
+      "holder_name": "Saved User",
+      "account_number": 1001,
+      "balance": 20.0,
+      "transactions": [
+        {
+          "time": "2026-09-15 10:51:19",
+          "type": "Account Opened",
+          "amount": 20.0,
+          "balance": 20.0
+        }
+      ],
+      "password_salt": "JSVwe2dxMylTM2PWbIdxcA==",
+      "password_hash": "7XxmPgSzXpmp0w3aHLTIpgfdUEoAJKz8LwwtVG0Rxqo="
+    },
+    {
+      "holder_name": "Rushil Barve",
+      "account_number": 1002,
+      "balance": 41.62,
+      "transactions": [
+        {
+          "time": "2026-09-15 14:30:11",
+          "type": "Account Opened",
+          "amount": 50.0,
+          "balance": 50.0
+        },
+        {
+          "time": "2026-09-15 14:31:19",
+          "type": "Withdraw",
+          "amount": 8.38,
+          "balance": 41.62,
+          "purpose": "Library Candy & Phone Card Case"
+        }
+      ],
+      "password_salt": "5urMENJZzDxR6K6O/HDaaQ==",
+      "password_hash": "/GeLYM8vl8j8SOrWCj7enRTEKuWsB4wdyr/E+SapZiA="
+    }
+  ]
+}
