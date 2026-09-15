@@ -388,6 +388,9 @@
 const accounts = [];
 const API = '/api';
 const MIN_BALANCE = 1;
+const STATIC_MODE = window.location.hostname.endsWith('github.io')
+  || window.location.protocol === 'file:';
+const STATIC_STORAGE_KEY = 'ledger-co-passbook';
 const accountsArea = document.getElementById('accountsArea');
 const emptyNote = document.getElementById('emptyNote');
 const totalCountEl = document.getElementById('totalCount');
@@ -402,6 +405,8 @@ function refreshCount() {
 }
 
 async function apiRequest(path, options = {}) {
+  if (STATIC_MODE) return staticApiRequest(path, options);
+
   const response = await fetch(`${API}${path}`, {
     headers: { 'Content-Type': 'application/json' },
     ...options,
@@ -409,6 +414,138 @@ async function apiRequest(path, options = {}) {
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Request failed.');
   return data;
+}
+
+function readStaticState() {
+  const saved = localStorage.getItem(STATIC_STORAGE_KEY);
+  return saved ? JSON.parse(saved) : {
+    totalAccounts: 0,
+    nextAccountNumber: 1001,
+    accounts: [],
+  };
+}
+
+function writeStaticState(state) {
+  localStorage.setItem(STATIC_STORAGE_KEY, JSON.stringify(state));
+}
+
+async function staticPasswordHash(password) {
+  const bytes = new TextEncoder().encode(password);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function staticAccountData(account, unlocked = false) {
+  const data = {
+    holderName: account.holderName,
+    accountNumber: account.accountNumber,
+    locked: !unlocked,
+  };
+  if (unlocked) {
+    const withdrawals = account.transactions.filter(t => t.type === 'Withdraw');
+    data.balance = account.balance;
+    data.transactions = account.transactions;
+    data.totalSpent = withdrawals.reduce((total, t) => total + t.amount, 0);
+    data.spendingByPurpose = withdrawals.reduce((summary, t) => {
+      const purpose = t.purpose || 'Cash withdrawal';
+      summary[purpose] = (summary[purpose] || 0) + t.amount;
+      return summary;
+    }, {});
+  }
+  return data;
+}
+
+async function staticApiRequest(path, options = {}) {
+  const state = readStaticState();
+  const payload = options.body ? JSON.parse(options.body) : {};
+  const parts = path.split('/').filter(Boolean);
+
+  if (parts.length === 1 && parts[0] === 'accounts' && !options.method) {
+    return {
+      accounts: state.accounts.map(account => staticAccountData(account)),
+      totalAccounts: state.totalAccounts,
+    };
+  }
+
+  if (parts.length === 1 && parts[0] === 'accounts') {
+    const holderName = String(payload.holderName || '').trim();
+    const password = String(payload.password || '');
+    const initialDeposit = Number(payload.initialDeposit);
+    if (!holderName) throw new Error('Enter an account holder name.');
+    if (password.length < 4) throw new Error('Password must be at least 4 characters.');
+    if (!Number.isFinite(initialDeposit) || initialDeposit < MIN_BALANCE) {
+      throw new Error(`Initial deposit must be at least CA$${MIN_BALANCE}`);
+    }
+    const account = {
+      holderName,
+      accountNumber: state.nextAccountNumber++,
+      balance: initialDeposit,
+      passwordHash: await staticPasswordHash(password),
+      transactions: [{
+        time: new Date().toISOString().slice(0, 19).replace('T', ' '),
+        type: 'Account Opened',
+        amount: initialDeposit,
+        balance: initialDeposit,
+      }],
+    };
+    state.accounts.push(account);
+    state.totalAccounts += 1;
+    writeStaticState(state);
+    return { account: staticAccountData(account) };
+  }
+
+  if (parts.length !== 3 || parts[0] !== 'accounts') throw new Error('Not found.');
+  const account = state.accounts.find(item => item.accountNumber === Number(parts[1]));
+  if (!account) throw new Error('Account not found.');
+  const action = parts[2];
+  const password = String(payload.password || '');
+
+  if (action === 'unlock' || action === 'delete') {
+    if (await staticPasswordHash(password) !== account.passwordHash) {
+      throw new Error('Incorrect password.');
+    }
+    if (action === 'delete') {
+      state.accounts = state.accounts.filter(item => item !== account);
+      writeStaticState(state);
+      return { accountNumber: account.accountNumber, totalAccounts: state.totalAccounts };
+    }
+    return {
+      token: `static-${account.accountNumber}`,
+      account: staticAccountData(account, true),
+    };
+  }
+
+  const token = options.headers && options.headers.Authorization;
+  if (token !== `Bearer static-${account.accountNumber}`) {
+    throw new Error('Unlock this account before viewing its amount.');
+  }
+  const amount = Number(payload.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error(`${action === 'deposit' ? 'Deposit' : 'Withdrawal'} amount must be positive.`);
+  }
+  if (action === 'withdraw') {
+    const purpose = String(payload.purpose || '').trim();
+    if (!purpose) throw new Error('Enter what this money was spent on.');
+    if (amount > account.balance) throw new Error('Insufficient balance for this withdrawal.');
+    if (account.balance - amount < MIN_BALANCE) {
+      throw new Error(`Withdrawal denied: balance cannot go below CA$${MIN_BALANCE}.`);
+    }
+    account.balance -= amount;
+    account.transactions.push({
+      time: new Date().toISOString().slice(0, 19).replace('T', ' '),
+      type: 'Withdraw', amount, balance: account.balance, purpose,
+    });
+  } else if (action === 'deposit') {
+    account.balance += amount;
+    account.transactions.push({
+      time: new Date().toISOString().slice(0, 19).replace('T', ' '),
+      type: 'Deposit', amount, balance: account.balance,
+    });
+  } else {
+    throw new Error('Not found.');
+  }
+  writeStaticState(state);
+  return { account: staticAccountData(account, true) };
 }
 
 function flashOpenError(text) {
