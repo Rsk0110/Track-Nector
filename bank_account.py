@@ -179,8 +179,9 @@ def account_data(account, unlocked=False):
 
 accounts = []
 unlocked_accounts = {}
+SOURCE_DATA_FILE = Path(__file__).with_name("accounts.json")
 DATA_FILE = Path(os.environ.get(
-    "LEDGER_DATA_FILE", Path(__file__).with_name("accounts.json")
+    "LEDGER_DATA_FILE", SOURCE_DATA_FILE
 ))
 
 
@@ -199,7 +200,10 @@ def save_accounts():
 def load_accounts():
     """Restore accounts and account-number bookkeeping when the server starts."""
     if not DATA_FILE.exists():
-        return
+        if DATA_FILE == SOURCE_DATA_FILE or not SOURCE_DATA_FILE.exists():
+            return
+        DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
+        DATA_FILE.write_bytes(SOURCE_DATA_FILE.read_bytes())
     payload = json.loads(DATA_FILE.read_text(encoding="utf-8"))
     accounts.extend(Account.from_record(record) for record in payload["accounts"])
     Account._total_accounts = payload["total_accounts"]
