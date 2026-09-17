@@ -386,10 +386,12 @@
    UI wiring
 --------------------------------------------------------- */
 const accounts = [];
-const API = '/api';
+const API = window.LEDGER_API_URL
+  || (window.location.hostname.endsWith('github.io')
+    ? 'https://ledger-co.onrender.com/api'
+    : '/api');
 const MIN_BALANCE = 1;
-const STATIC_MODE = window.location.hostname.endsWith('github.io')
-  || window.location.protocol === 'file:';
+const STATIC_MODE = window.location.protocol === 'file:';
 const STATIC_STORAGE_KEY = 'ledger-co-passbook';
 const accountsArea = document.getElementById('accountsArea');
 const emptyNote = document.getElementById('emptyNote');
