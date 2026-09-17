@@ -4,7 +4,7 @@ services:
     runtime: python
     plan: starter
     buildCommand: python -m py_compile bank_account.py
-    startCommand: python bank_account.py
+    startCommand: gunicorn bank_account:app
     healthCheckPath: /api/accounts
     envVars:
       - key: HOST

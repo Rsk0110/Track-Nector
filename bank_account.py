@@ -9,8 +9,9 @@ import json
 import secrets
 import base64
 import os
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+from flask import Flask, jsonify, request, send_from_directory
 
 
 class Account:
@@ -210,142 +211,145 @@ def load_accounts():
     Account._next_account_number = payload["next_account_number"]
 
 
-class BankingRequestHandler(BaseHTTPRequestHandler):
-    """Small JSON API and static-file server for the passbook UI."""
+app = Flask(__name__)
 
-    def _send_json(self, data, status=200):
-        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(body)
 
-    def _read_json(self):
-        length = int(self.headers.get("Content-Length", 0))
-        return json.loads(self.rfile.read(length))
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    return response
 
-    def _authorized_account(self, account):
-        token = self.headers.get("Authorization", "").removeprefix("Bearer ")
-        if unlocked_accounts.get(token) is not account:
-            raise PermissionError("Unlock this account before viewing its amount.")
 
-    def do_OPTIONS(self):
-        self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.end_headers()
+def request_payload():
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        raise ValueError("Request body must be a JSON object.")
+    return payload
 
-    def do_GET(self):
-        if self.path == "/api/accounts":
-            self._send_json({
-                "accounts": [account_data(account) for account in accounts],
-                "totalAccounts": Account.total_accounts(),
-            })
-            return
 
-        if self.path in ("/", "/index.html"):
-            body = Path(__file__).with_name("index.html").read_bytes()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
+def find_account(account_number):
+    account = next(
+        (item for item in accounts if item.account_number == account_number),
+        None,
+    )
+    if account is None:
+        raise LookupError("Account not found.")
+    return account
 
-        self._send_json({"error": "Not found."}, 404)
 
-    def do_POST(self):
-        try:
-            payload = self._read_json()
-            parts = self.path.strip("/").split("/")
+def authorize_account(account):
+    token = request.headers.get("Authorization", "")
+    if token.startswith("Bearer "):
+        token = token[7:]
+    if unlocked_accounts.get(token) is not account:
+        raise PermissionError("Unlock this account before viewing its amount.")
 
-            if parts == ["api", "accounts"]:
-                name = str(payload.get("holderName", "")).strip()
-                if not name:
-                    raise ValueError("Enter an account holder name.")
-                password = str(payload.get("password", ""))
-                if len(password) < 4:
-                    raise ValueError("Password must be at least 4 characters.")
-                account = Account(
-                    name, float(payload["initialDeposit"]), password
-                )
-                accounts.append(account)
-                save_accounts()
-                self._send_json({"account": account_data(account)})
-                return
 
-            if len(parts) == 4 and parts[:2] == ["api", "accounts"]:
-                account_number = int(parts[2])
-                account = next(
-                    account for account in accounts
-                    if account.account_number == account_number
-                )
+@app.get("/api/health")
+def health_check():
+    return jsonify({"status": "ok"})
 
-                if parts[3] == "unlock":
-                    password = str(payload.get("password", ""))
-                    if not account.verify_password(password):
-                        raise PermissionError("Incorrect password.")
-                    token = secrets.token_urlsafe(32)
-                    unlocked_accounts[token] = account
-                    self._send_json({
-                        "token": token,
-                        "account": account_data(account, unlocked=True),
-                    })
-                    return
 
-                if parts[3] == "delete":
-                    password = str(payload.get("password", ""))
-                    if not account.verify_password(password):
-                        raise PermissionError("Incorrect password.")
-                    accounts.remove(account)
-                    Account._total_accounts -= 1
-                    for token, unlocked_account in list(unlocked_accounts.items()):
-                        if unlocked_account is account:
-                            del unlocked_accounts[token]
-                    save_accounts()
-                    self._send_json({
-                        "accountNumber": account_number,
-                        "totalAccounts": Account.total_accounts(),
-                    })
-                    return
+@app.get("/api/accounts")
+def list_accounts():
+    return jsonify({
+        "accounts": [account_data(account) for account in accounts],
+        "totalAccounts": Account.total_accounts(),
+    })
 
-                self._authorized_account(account)
-                amount = float(payload["amount"])
-                if parts[3] == "deposit":
-                    account.deposit(amount)
-                elif parts[3] == "withdraw":
-                    account.withdraw(amount, str(payload.get("purpose", "")))
-                else:
-                    self._send_json({"error": "Not found."}, 404)
-                    return
-                save_accounts()
-                self._send_json({"account": account_data(account, unlocked=True)})
-                return
 
-            self._send_json({"error": "Not found."}, 404)
-        except PermissionError as error:
-            self._send_json({"error": str(error)}, 403)
-        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
-            self._send_json({"error": str(error)}, 400)
-        except StopIteration:
-            self._send_json({"error": "Account not found."}, 404)
+@app.post("/api/accounts")
+def create_account():
+    payload = request_payload()
+    name = str(payload.get("holderName", "")).strip()
+    if not name:
+        raise ValueError("Enter an account holder name.")
+    password = str(payload.get("password", ""))
+    if len(password) < 4:
+        raise ValueError("Password must be at least 4 characters.")
+    account = Account(name, float(payload["initialDeposit"]), password)
+    accounts.append(account)
+    save_accounts()
+    return jsonify({"account": account_data(account)}), 201
+
+
+@app.post("/api/accounts/<int:account_number>/<action>")
+def account_action(account_number, action):
+    payload = request_payload()
+    account = find_account(account_number)
+
+    if action == "unlock":
+        if not account.verify_password(str(payload.get("password", ""))):
+            raise PermissionError("Incorrect password.")
+        token = secrets.token_urlsafe(32)
+        unlocked_accounts[token] = account
+        return jsonify({
+            "token": token,
+            "account": account_data(account, unlocked=True),
+        })
+
+    if action == "delete":
+        if not account.verify_password(str(payload.get("password", ""))):
+            raise PermissionError("Incorrect password.")
+        accounts.remove(account)
+        Account._total_accounts -= 1
+        for token, unlocked_account in list(unlocked_accounts.items()):
+            if unlocked_account is account:
+                del unlocked_accounts[token]
+        save_accounts()
+        return jsonify({
+            "accountNumber": account_number,
+            "totalAccounts": Account.total_accounts(),
+        })
+
+    authorize_account(account)
+    amount = float(payload["amount"])
+    if action == "deposit":
+        account.deposit(amount)
+    elif action == "withdraw":
+        account.withdraw(amount, str(payload.get("purpose", "")))
+    else:
+        return jsonify({"error": "Not found."}), 404
+    save_accounts()
+    return jsonify({"account": account_data(account, unlocked=True)})
+
+
+@app.get("/")
+@app.get("/index.html")
+def serve_frontend():
+    return send_from_directory(Path(__file__).parent, "index.html")
+
+
+@app.errorhandler(PermissionError)
+def handle_permission_error(error):
+    return jsonify({"error": str(error)}), 403
+
+
+@app.errorhandler(ValueError)
+def handle_bad_request(error):
+    return jsonify({"error": str(error)}), 400
+
+
+app.register_error_handler(KeyError, handle_bad_request)
+app.register_error_handler(TypeError, handle_bad_request)
+app.register_error_handler(json.JSONDecodeError, handle_bad_request)
+
+
+@app.errorhandler(LookupError)
+def handle_missing_account(error):
+    return jsonify({"error": str(error)}), 404
+
+
+load_accounts()
 
 
 # ------------------------------------------------------------------
 # Demo / manual test — run this file directly to see it in action
 # ------------------------------------------------------------------
 if __name__ == "__main__":
-    load_accounts()
     host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "8000"))
-    server = ThreadingHTTPServer((host, port), BankingRequestHandler)
     print(f"Ledger & Co. is running at http://{host}:{port}")
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\nServer stopped.")
-    finally:
-        server.server_close()
+    app.run(host=host, port=port)
