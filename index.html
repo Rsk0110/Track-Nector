@@ -410,8 +410,8 @@ async function apiRequest(path, options = {}) {
   if (STATIC_MODE) return staticApiRequest(path, options);
 
   const response = await fetch(`${API}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
     ...options,
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Request failed.');
